@@ -1,6 +1,6 @@
 
 import { Button } from "@/components/ui/button";
-import { Menu, Bell, LogOut, UserCircle } from "lucide-react";
+import { Menu, Bell, UserCircle } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,7 +9,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useAuth } from "@/contexts/AuthContext";
 
 interface HeaderProps {
   sidebarOpen: boolean;
@@ -17,8 +16,6 @@ interface HeaderProps {
 }
 
 export function Header({ sidebarOpen, setSidebarOpen }: HeaderProps) {
-  const { signOut, userRole } = useAuth();
-
   return (
     <header className="h-16 border-b border-border bg-card flex items-center justify-between px-4 sticky top-0 z-30">
       <div className="flex items-center">
@@ -31,11 +28,6 @@ export function Header({ sidebarOpen, setSidebarOpen }: HeaderProps) {
           <Menu className="h-5 w-5" />
         </Button>
         <h1 className="text-xl font-semibold">Attendo</h1>
-        {userRole && (
-          <span className="ml-2 text-xs px-2 py-1 bg-primary/10 text-primary rounded-full">
-            {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
-          </span>
-        )}
       </div>
 
       <div className="flex items-center space-x-2">
@@ -55,10 +47,7 @@ export function Header({ sidebarOpen, setSidebarOpen }: HeaderProps) {
             <DropdownMenuItem>Profile</DropdownMenuItem>
             <DropdownMenuItem>Settings</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => signOut()} className="text-destructive focus:text-destructive">
-              <LogOut className="h-4 w-4 mr-2" />
-              Log out
-            </DropdownMenuItem>
+            <DropdownMenuItem>Log out</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

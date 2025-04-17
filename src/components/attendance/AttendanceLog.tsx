@@ -1,7 +1,5 @@
 
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import {
   Table,
   TableBody,
@@ -36,9 +34,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { useAuth } from "@/contexts/AuthContext";
 
-type AttendanceStatus = "present" | "absent" | "late" | "on-leave";
+type AttendanceStatus = "present" | "absent" | "late" | "leave";
 
 interface AttendanceRecord {
   id: string;
@@ -46,90 +43,75 @@ interface AttendanceRecord {
   employeeName: string;
   department: string;
   date: Date;
-  checkIn: string | null;
-  checkOut: string | null;
+  checkIn: string;
+  checkOut: string;
   status: AttendanceStatus;
-  workDuration: string | null;
+  workDuration: string;
 }
 
-async function fetchAttendanceRecords() {
-  const { data: attendanceData, error: attendanceError } = await supabase
-    .from('attendance')
-    .select(`
-      id,
-      employee_id,
-      date,
-      check_in,
-      check_out,
-      status,
-      employees(name, department)
-    `)
-    .order('date', { ascending: false });
-
-  if (attendanceError) {
-    throw new Error(attendanceError.message);
+// Sample data
+const attendanceData: AttendanceRecord[] = Array.from({ length: 20 }).map((_, i) => {
+  const date = new Date();
+  date.setDate(date.getDate() - i);
+  
+  const statuses: AttendanceStatus[] = ["present", "absent", "late", "leave"];
+  const status = statuses[Math.floor(Math.random() * statuses.length)];
+  
+  const departments = ["IT", "HR", "Finance", "Marketing", "Sales"];
+  const department = departments[Math.floor(Math.random() * departments.length)];
+  
+  const names = [
+    "John Smith",
+    "Sarah Johnson",
+    "Michael Brown",
+    "Emily Davis",
+    "David Wilson",
+  ];
+  const name = names[Math.floor(Math.random() * names.length)];
+  
+  let checkIn = "";
+  let checkOut = "";
+  let workDuration = "";
+  
+  if (status === "present" || status === "late") {
+    const lateMinutes = status === "late" ? 30 + Math.floor(Math.random() * 60) : 0;
+    const checkInHour = 9;
+    const checkInMinute = lateMinutes;
+    checkIn = `${checkInHour}:${checkInMinute.toString().padStart(2, "0")} AM`;
+    
+    const checkOutHour = 5 + Math.floor(Math.random() * 2);
+    const checkOutMinute = Math.floor(Math.random() * 60);
+    checkOut = `${checkOutHour}:${checkOutMinute.toString().padStart(2, "0")} PM`;
+    
+    const totalMinutes = (checkOutHour + 12 - checkInHour) * 60 + (checkOutMinute - checkInMinute);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    workDuration = `${hours}h ${minutes}m`;
   }
-
-  const records: AttendanceRecord[] = attendanceData.map((record: any) => {
-    let workDuration = null;
-    if (record.check_in && record.check_out) {
-      const checkInTime = new Date(record.check_in);
-      const checkOutTime = new Date(record.check_out);
-      const durationMinutes = Math.floor((checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60));
-      const hours = Math.floor(durationMinutes / 60);
-      const minutes = durationMinutes % 60;
-      workDuration = `${hours}h ${minutes}m`;
-    }
-
-    return {
-      id: record.id,
-      employeeId: record.employee_id,
-      employeeName: record.employees.name,
-      department: record.employees.department,
-      date: new Date(record.date),
-      checkIn: record.check_in,
-      checkOut: record.check_out,
-      status: record.status as AttendanceStatus,
-      workDuration,
-    };
-  });
-
-  return records;
-}
+  
+  return {
+    id: `ATT${(i + 1).toString().padStart(3, "0")}`,
+    employeeId: `EMP${Math.floor(Math.random() * 10).toString().padStart(3, "0")}`,
+    employeeName: name,
+    department,
+    date,
+    checkIn,
+    checkOut,
+    status,
+    workDuration,
+  };
+});
 
 export function AttendanceLog() {
   const [searchTerm, setSearchTerm] = useState("");
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [selectedDepartment, setSelectedDepartment] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
-  const { userRole } = useAuth();
 
-  const { data: attendanceRecords = [], refetch } = useQuery({
-    queryKey: ['attendance-records'],
-    queryFn: fetchAttendanceRecords,
-  });
-
-  useEffect(() => {
-    // Subscribe to realtime changes
-    const channel = supabase
-      .channel('public:attendance')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'attendance'
-      }, () => {
-        refetch();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [refetch]);
-
-  const filteredAttendance = attendanceRecords.filter((record) => {
+  const filteredAttendance = attendanceData.filter((record) => {
     const matchesSearch =
       record.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      record.employeeId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       record.department.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesDate = date
@@ -148,20 +130,17 @@ export function AttendanceLog() {
   const getStatusBadge = (status: AttendanceStatus) => {
     switch (status) {
       case "present":
-        return <Badge className="bg-green-500">Present</Badge>;
+        return <Badge className="bg-attendance-present">Present</Badge>;
       case "absent":
-        return <Badge className="bg-red-500">Absent</Badge>;
+        return <Badge className="bg-attendance-absent">Absent</Badge>;
       case "late":
-        return <Badge className="bg-yellow-500">Late</Badge>;
-      case "on-leave":
-        return <Badge className="bg-blue-500">On Leave</Badge>;
+        return <Badge className="bg-attendance-late">Late</Badge>;
+      case "leave":
+        return <Badge className="bg-attendance-leave">On Leave</Badge>;
       default:
         return <Badge variant="outline">Unknown</Badge>;
     }
   };
-
-  // Only managers and admins can see all records
-  const isManagerOrAdmin = userRole === 'admin' || userRole === 'manager';
 
   return (
     <div className="space-y-4">
@@ -202,56 +181,54 @@ export function AttendanceLog() {
           </Popover>
         </div>
         
-        {isManagerOrAdmin && (
-          <div className="flex items-center gap-2">
-            <Select
-              value={selectedDepartment}
-              onValueChange={setSelectedDepartment}
-            >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Department" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectLabel>Department</SelectLabel>
-                  <SelectItem value="all">All Departments</SelectItem>
-                  <SelectItem value="IT">IT</SelectItem>
-                  <SelectItem value="HR">HR</SelectItem>
-                  <SelectItem value="Finance">Finance</SelectItem>
-                  <SelectItem value="Marketing">Marketing</SelectItem>
-                  <SelectItem value="Sales">Sales</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            
-            <Select
-              value={selectedStatus}
-              onValueChange={setSelectedStatus}
-            >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectLabel>Status</SelectLabel>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="present">Present</SelectItem>
-                  <SelectItem value="absent">Absent</SelectItem>
-                  <SelectItem value="late">Late</SelectItem>
-                  <SelectItem value="on-leave">On Leave</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            
-            <Button variant="outline" size="icon">
-              <Filter className="h-4 w-4" />
-            </Button>
-            
-            <Button variant="outline" size="icon">
-              <Download className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <Select
+            value={selectedDepartment}
+            onValueChange={setSelectedDepartment}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Department" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectLabel>Department</SelectLabel>
+                <SelectItem value="all">All Departments</SelectItem>
+                <SelectItem value="IT">IT</SelectItem>
+                <SelectItem value="HR">HR</SelectItem>
+                <SelectItem value="Finance">Finance</SelectItem>
+                <SelectItem value="Marketing">Marketing</SelectItem>
+                <SelectItem value="Sales">Sales</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          
+          <Select
+            value={selectedStatus}
+            onValueChange={setSelectedStatus}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectLabel>Status</SelectLabel>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="present">Present</SelectItem>
+                <SelectItem value="absent">Absent</SelectItem>
+                <SelectItem value="late">Late</SelectItem>
+                <SelectItem value="leave">On Leave</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          
+          <Button variant="outline" size="icon">
+            <Filter className="h-4 w-4" />
+          </Button>
+          
+          <Button variant="outline" size="icon">
+            <Download className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
       
       <div className="rounded-md border">
@@ -269,30 +246,23 @@ export function AttendanceLog() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredAttendance.length > 0 ? (
-              filteredAttendance.map((record) => (
-                <TableRow key={record.id}>
-                  <TableCell className="font-medium">{record.id.slice(0, 8)}</TableCell>
-                  <TableCell>
-                    <div>
-                      <div>{record.employeeName}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>{record.department}</TableCell>
-                  <TableCell>{format(record.date, "MMM dd, yyyy")}</TableCell>
-                  <TableCell>{record.checkIn ? format(new Date(record.checkIn), "hh:mm a") : "-"}</TableCell>
-                  <TableCell>{record.checkOut ? format(new Date(record.checkOut), "hh:mm a") : "-"}</TableCell>
-                  <TableCell>{record.workDuration || "-"}</TableCell>
-                  <TableCell>{getStatusBadge(record.status)}</TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={8} className="h-24 text-center">
-                  No attendance records found.
+            {filteredAttendance.map((record) => (
+              <TableRow key={record.id}>
+                <TableCell className="font-medium">{record.id}</TableCell>
+                <TableCell>
+                  <div>
+                    <div>{record.employeeName}</div>
+                    <div className="text-xs text-muted-foreground">{record.employeeId}</div>
+                  </div>
                 </TableCell>
+                <TableCell>{record.department}</TableCell>
+                <TableCell>{format(record.date, "MMM dd, yyyy")}</TableCell>
+                <TableCell>{record.checkIn || "-"}</TableCell>
+                <TableCell>{record.checkOut || "-"}</TableCell>
+                <TableCell>{record.workDuration || "-"}</TableCell>
+                <TableCell>{getStatusBadge(record.status)}</TableCell>
               </TableRow>
-            )}
+            ))}
           </TableBody>
         </Table>
       </div>
