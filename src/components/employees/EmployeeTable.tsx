@@ -100,8 +100,8 @@ export function EmployeeTable() {
 
   const columns = getEmployeeColumns(isAdmin, handleViewProfile);
 
-  const table = useReactTable({
-    data: employees,
+  const table = useReactTable<Employee>({
+    data: employees as Employee[],
     columns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
