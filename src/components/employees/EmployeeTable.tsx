@@ -1,5 +1,19 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import {
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+  getPaginationRowModel,
+  SortingState,
+  getSortedRowModel,
+  ColumnFiltersState,
+  getFilteredRowModel,
+} from "@tanstack/react-table";
 import {
   Table,
   TableBody,
@@ -8,177 +22,300 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Eye, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { 
+  Search, 
+  ArrowUpDown, 
+  ChevronLeft, 
+  ChevronRight,
+  MoreHorizontal,
+  User,
+  Trash,
+  Edit,
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/contexts/AuthContext";
 import { EmployeeProfile } from "./EmployeeProfile";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-export type Employee = {
+export interface Employee {
   id: string;
   name: string;
+  email: string;
   position: string;
   department: string;
-  email: string;
   phone: string;
-  status: "active" | "on-leave" | "absent";
-  joinDate: string;
   avatar?: string;
-};
+  joinDate: string;
+}
 
-// Sample data
-const employees: Employee[] = [
-  {
-    id: "EMP001",
-    name: "John Smith",
-    position: "Senior Developer",
-    department: "IT",
-    email: "john.smith@example.com",
-    phone: "(555) 123-4567",
-    status: "active",
-    joinDate: "2020-05-12",
-  },
-  {
-    id: "EMP002",
-    name: "Sarah Johnson",
-    position: "HR Manager",
-    department: "HR",
-    email: "sarah.johnson@example.com",
-    phone: "(555) 234-5678",
-    status: "on-leave",
-    joinDate: "2019-03-15",
-  },
-  {
-    id: "EMP003",
-    name: "Michael Brown",
-    position: "Finance Analyst",
-    department: "Finance",
-    email: "michael.brown@example.com",
-    phone: "(555) 345-6789",
-    status: "active",
-    joinDate: "2021-01-10",
-  },
-  {
-    id: "EMP004",
-    name: "Emily Davis",
-    position: "Marketing Specialist",
-    department: "Marketing",
-    email: "emily.davis@example.com",
-    phone: "(555) 456-7890",
-    status: "absent",
-    joinDate: "2018-11-20",
-  },
-  {
-    id: "EMP005",
-    name: "David Wilson",
-    position: "Sales Manager",
-    department: "Sales",
-    email: "david.wilson@example.com",
-    phone: "(555) 567-8901",
-    status: "active",
-    joinDate: "2017-08-05",
-  },
-];
+async function fetchEmployees() {
+  const { data, error } = await supabase
+    .from('employees')
+    .select('*');
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data.map((employee: any) => ({
+    id: employee.id,
+    name: employee.name,
+    email: employee.email,
+    position: employee.position,
+    department: employee.department,
+    phone: employee.phone || '',
+    avatar: employee.avatar,
+    joinDate: employee.join_date,
+  }));
+}
 
 export function EmployeeTable() {
-  const [searchTerm, setSearchTerm] = useState("");
+  const { toast } = useToast();
+  const { userRole } = useAuth();
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  
+  const { data: employees = [], refetch } = useQuery({
+    queryKey: ['employees'],
+    queryFn: fetchEmployees,
+  });
 
-  const filteredEmployees = employees.filter((employee) =>
-    employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    employee.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    employee.department.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  useEffect(() => {
+    // Subscribe to realtime changes
+    const channel = supabase
+      .channel('public:employees')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'employees'
+      }, () => {
+        refetch();
+      })
+      .subscribe();
 
-  const getStatusColor = (status: Employee["status"]) => {
-    switch (status) {
-      case "active":
-        return "bg-attendance-present";
-      case "on-leave":
-        return "bg-attendance-leave";
-      case "absent":
-        return "bg-attendance-absent";
-      default:
-        return "bg-muted";
-    }
-  };
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refetch]);
+
+  const isAdmin = userRole === 'admin';
+
+  const columns: ColumnDef<Employee>[] = [
+    {
+      accessorKey: "name",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Name
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        );
+      },
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-xs">
+            {row.original.avatar ? (
+              <img
+                src={row.original.avatar}
+                alt={row.original.name}
+                className="h-8 w-8 rounded-full object-cover"
+              />
+            ) : (
+              <User className="h-4 w-4" />
+            )}
+          </div>
+          <div>{row.getValue("name")}</div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "position",
+      header: "Position",
+    },
+    {
+      accessorKey: "department",
+      header: "Department",
+    },
+    {
+      accessorKey: "email",
+      header: "Email",
+    },
+    {
+      accessorKey: "phone",
+      header: "Phone",
+    },
+    {
+      id: "actions",
+      cell: ({ row }) => {
+        const employee = row.original;
+        
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-8 w-8 p-0">
+                <span className="sr-only">Open menu</span>
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => {
+                setSelectedEmployee(employee);
+                setIsProfileOpen(true);
+              }}>
+                View Profile
+              </DropdownMenuItem>
+              {isAdmin && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem>
+                    <Edit className="mr-2 h-4 w-4" />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="text-destructive focus:text-destructive">
+                    <Trash className="mr-2 h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
+    },
+  ];
+
+  const table = useReactTable({
+    data: employees,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    onSortingChange: setSorting,
+    getSortedRowModel: getSortedRowModel(),
+    onColumnFiltersChange: setColumnFilters,
+    getFilteredRowModel: getFilteredRowModel(),
+    state: {
+      sorting,
+      columnFilters,
+    },
+  });
 
   return (
-    <>
-      <div className="flex items-center justify-between mb-4">
-        <div className="relative w-72">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search employees..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-8"
-          />
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="relative w-64">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search employees..."
+              value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
+              onChange={(event) =>
+                table.getColumn("name")?.setFilterValue(event.target.value)
+              }
+              className="pl-8"
+            />
+          </div>
         </div>
       </div>
+      
       <div className="rounded-md border">
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead>Employee ID</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Position</TableHead>
-              <TableHead>Department</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredEmployees.map((employee) => (
-              <TableRow key={employee.id}>
-                <TableCell className="font-medium">{employee.id}</TableCell>
-                <TableCell>{employee.name}</TableCell>
-                <TableCell>{employee.position}</TableCell>
-                <TableCell>{employee.department}</TableCell>
-                <TableCell>
-                  <Badge
-                    variant="outline"
-                    className={`${getStatusColor(employee.status)} text-white`}
-                  >
-                    {employee.status === "active"
-                      ? "Present"
-                      : employee.status === "on-leave"
-                      ? "On Leave"
-                      : "Absent"}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSelectedEmployee(employee)}
-                  >
-                    <Eye className="h-4 w-4 mr-1" /> View
-                  </Button>
-                </TableCell>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext()
+                        )}
+                  </TableHead>
+                ))}
               </TableRow>
             ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow
+                  key={row.id}
+                  data-state={row.getIsSelected() && "selected"}
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="h-24 text-center">
+                  No employees found.
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </div>
-
-      <Dialog
-        open={selectedEmployee !== null}
-        onOpenChange={(open) => !open && setSelectedEmployee(null)}
-      >
-        <DialogContent className="max-w-3xl">
+      
+      <div className="flex items-center justify-between">
+        <div className="flex-1 text-sm text-muted-foreground">
+          Showing {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1} to{" "}
+          {Math.min(
+            (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
+            table.getFilteredRowModel().rows.length
+          )}{" "}
+          of {table.getFilteredRowModel().rows.length} employees
+        </div>
+        <div className="flex items-center space-x-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => table.previousPage()}
+            disabled={!table.getCanPreviousPage()}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <div className="text-sm font-medium">
+            Page {table.getState().pagination.pageIndex + 1} of{" "}
+            {table.getPageCount()}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => table.nextPage()}
+            disabled={!table.getCanNextPage()}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+      
+      <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}>
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>Employee Profile</DialogTitle>
           </DialogHeader>
           {selectedEmployee && <EmployeeProfile employee={selectedEmployee} />}
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }
