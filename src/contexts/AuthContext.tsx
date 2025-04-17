@@ -10,7 +10,7 @@ type AuthContextType = {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, userData: { firstName: string; lastName: string }) => Promise<void>;
+  signUp: (email: string, password: string, userData: { firstName: string; lastName: string; role?: string }) => Promise<void>;
   signOut: () => Promise<void>;
   userRole: string | null;
 };
@@ -112,7 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signUp = async (email: string, password: string, userData: { firstName: string; lastName: string }) => {
+  const signUp = async (email: string, password: string, userData: { firstName: string; lastName: string; role?: string }) => {
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -121,6 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           data: {
             first_name: userData.firstName,
             last_name: userData.lastName,
+            preferred_role: userData.role || 'employee', // Store the preferred role
           },
         },
       });
@@ -132,6 +133,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           variant: "destructive",
         });
         return;
+      }
+
+      // If user is created successfully, we need to create a user_roles entry
+      if (data.user) {
+        const { error: roleError } = await supabase
+          .from('user_roles')
+          .insert([
+            { 
+              user_id: data.user.id,
+              role: userData.role || 'employee'
+            }
+          ]);
+
+        if (roleError) {
+          console.error('Error setting user role:', roleError);
+          toast({
+            title: "Role assignment failed",
+            description: "Your account was created but we couldn't set your role. Please contact support.",
+            variant: "destructive",
+          });
+        }
       }
 
       toast({
