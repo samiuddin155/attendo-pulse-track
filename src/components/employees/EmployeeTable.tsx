@@ -4,15 +4,14 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
   useReactTable,
+  getCoreRowModel,
   getPaginationRowModel,
   SortingState,
   getSortedRowModel,
   ColumnFiltersState,
   getFilteredRowModel,
+  flexRender,
 } from "@tanstack/react-table";
 import {
   Table,
@@ -22,29 +21,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { 
-  Search, 
-  ArrowUpDown, 
-  ChevronLeft, 
-  ChevronRight,
-  MoreHorizontal,
-  User,
-  Trash,
-  Edit,
-} from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/AuthContext";
 import { EmployeeProfile } from "./EmployeeProfile";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EmployeeTableSearch } from "./table/EmployeeTableSearch";
+import { EmployeeTablePagination } from "./table/EmployeeTablePagination";
+import { getEmployeeColumns } from "./table/EmployeeTableColumns";
 
 export interface Employee {
   id: string;
@@ -111,93 +93,12 @@ export function EmployeeTable() {
 
   const isAdmin = userRole === 'admin';
 
-  const columns: ColumnDef<Employee>[] = [
-    {
-      accessorKey: "name",
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            Name
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        );
-      },
-      cell: ({ row }) => (
-        <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-xs">
-            {row.original.avatar ? (
-              <img
-                src={row.original.avatar}
-                alt={row.original.name}
-                className="h-8 w-8 rounded-full object-cover"
-              />
-            ) : (
-              <User className="h-4 w-4" />
-            )}
-          </div>
-          <div>{row.getValue("name")}</div>
-        </div>
-      ),
-    },
-    {
-      accessorKey: "position",
-      header: "Position",
-    },
-    {
-      accessorKey: "department",
-      header: "Department",
-    },
-    {
-      accessorKey: "email",
-      header: "Email",
-    },
-    {
-      accessorKey: "phone",
-      header: "Phone",
-    },
-    {
-      id: "actions",
-      cell: ({ row }) => {
-        const employee = row.original;
-        
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0">
-                <span className="sr-only">Open menu</span>
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => {
-                setSelectedEmployee(employee);
-                setIsProfileOpen(true);
-              }}>
-                View Profile
-              </DropdownMenuItem>
-              {isAdmin && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem>
-                    <Edit className="mr-2 h-4 w-4" />
-                    Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="text-destructive focus:text-destructive">
-                    <Trash className="mr-2 h-4 w-4" />
-                    Delete
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        );
-      },
-    },
-  ];
+  const handleViewProfile = (employee: Employee) => {
+    setSelectedEmployee(employee);
+    setIsProfileOpen(true);
+  };
+
+  const columns = getEmployeeColumns(isAdmin, handleViewProfile);
 
   const table = useReactTable({
     data: employees,
@@ -216,21 +117,7 @@ export function EmployeeTable() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="relative w-64">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search employees..."
-              value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
-              onChange={(event) =>
-                table.getColumn("name")?.setFilterValue(event.target.value)
-              }
-              className="pl-8"
-            />
-          </div>
-        </div>
-      </div>
+      <EmployeeTableSearch table={table} />
       
       <div className="rounded-md border">
         <Table>
@@ -275,38 +162,7 @@ export function EmployeeTable() {
         </Table>
       </div>
       
-      <div className="flex items-center justify-between">
-        <div className="flex-1 text-sm text-muted-foreground">
-          Showing {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1} to{" "}
-          {Math.min(
-            (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
-            table.getFilteredRowModel().rows.length
-          )}{" "}
-          of {table.getFilteredRowModel().rows.length} employees
-        </div>
-        <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <div className="text-sm font-medium">
-            Page {table.getState().pagination.pageIndex + 1} of{" "}
-            {table.getPageCount()}
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+      <EmployeeTablePagination table={table} />
       
       <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}>
         <DialogContent className="max-w-4xl">
