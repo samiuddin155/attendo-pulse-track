@@ -61,12 +61,6 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
-				},
-				attendance: {
-					present: '#10b981',
-					absent: '#ef4444',
-					leave: '#f59e0b',
-					late: '#6366f1'
 				}
 			},
 			borderRadius: {
